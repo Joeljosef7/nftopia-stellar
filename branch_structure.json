@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "ci/lighthouse-budget-checks-578",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "ci/lighthouse-budget-checks-578": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "ci/lighthouse-budget-checks-578",
+    "origin"
+  ]
+}

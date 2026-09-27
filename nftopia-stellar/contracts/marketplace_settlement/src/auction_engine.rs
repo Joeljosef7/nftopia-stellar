@@ -193,6 +193,7 @@ impl AuctionEngine {
                 refunded: false,
             },
             &recent_bids,
+            auction.bid_increment,
         )?;
 
         let bid = Bid {
