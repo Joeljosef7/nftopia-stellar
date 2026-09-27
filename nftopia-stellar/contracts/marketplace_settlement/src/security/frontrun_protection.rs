@@ -133,10 +133,16 @@ impl FrontRunningDetector {
         auction_id: u64,
         new_bid: &Bid,
         recent_bids: &Vec<Bid>,
+        configured_bid_increment: i128,
     ) -> Result<(), SettlementError> {
         // Check for suspicious patterns
-        let suspicious_patterns =
-            Self::detect_suspicious_patterns(env, auction_id, new_bid, recent_bids)?;
+        let suspicious_patterns = Self::detect_suspicious_patterns(
+            env,
+            auction_id,
+            new_bid,
+            recent_bids,
+            configured_bid_increment,
+        )?;
 
         if !suspicious_patterns.is_empty() {
             // Emit front-running detection event
@@ -159,6 +165,7 @@ impl FrontRunningDetector {
         _auction_id: u64,
         new_bid: &Bid,
         recent_bids: &Vec<Bid>,
+        configured_bid_increment: i128,
     ) -> Result<Vec<Bytes>, SettlementError> {
         let mut patterns = Vec::new(env);
 
@@ -168,7 +175,7 @@ impl FrontRunningDetector {
         }
 
         // Pattern 2: Bid amounts that exactly match previous bids + increment
-        if Self::detect_increment_gaming(new_bid, recent_bids) {
+        if Self::detect_increment_gaming(new_bid, recent_bids, configured_bid_increment) {
             patterns.push_back(Bytes::from_slice(env, "increment_gaming".as_bytes()));
         }
 
@@ -196,18 +203,29 @@ impl FrontRunningDetector {
         false
     }
 
-    /// Detect bids that game the increment system
-    fn detect_increment_gaming(new_bid: &Bid, recent_bids: &Vec<Bid>) -> bool {
-        if recent_bids.is_empty() {
+    /// Detect bids that repeatedly mirror the auction's configured increment.
+    ///
+    /// Bid amounts are represented in the asset's smallest units, so the
+    /// configured increment is already denomination-safe: XLM and issued
+    /// assets use the same integer comparison without a hard-coded decimal
+    /// assumption. The auction engine remains responsible for rejecting bids
+    /// below the minimum; this heuristic only reports a repeated pattern.
+    fn detect_increment_gaming(
+        new_bid: &Bid,
+        recent_bids: &Vec<Bid>,
+        configured_bid_increment: i128,
+    ) -> bool {
+        if recent_bids.is_empty() || configured_bid_increment <= 0 {
             return false;
         }
 
-        // Check if new bid exactly matches expected increment
-        // This is a simplified check - in practice you'd have more sophisticated logic
+        // Compare against the actual per-auction increment, not an example
+        // amount that only happened to fit one asset denomination.
         for bid in recent_bids.iter().rev().take(3) {
-            let expected_increment = bid.amount + 1000; // Example increment
-            if new_bid.amount == expected_increment {
-                return true;
+            if let Some(expected_amount) = bid.amount.checked_add(configured_bid_increment) {
+                if new_bid.amount == expected_amount {
+                    return true;
+                }
             }
         }
         false
@@ -267,5 +285,46 @@ impl WithdrawalPatternMonitor {
     ) -> Result<(), SettlementError> {
         // Placeholder for pattern analysis
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+
+    fn bid(_env: &Env, bidder: &Address, amount: i128, placed_at: u64) -> Bid {
+        Bid {
+            bidder: bidder.clone(),
+            amount,
+            placed_at,
+            is_committed: false,
+            commitment_hash: None,
+            refunded: false,
+        }
+    }
+
+    #[test]
+    fn increment_detection_uses_each_auction_increment_in_smallest_units() {
+        let env = Env::default();
+        let bidder = Address::generate(&env);
+        let mut recent = Vec::new(&env);
+        recent.push_back(bid(&env, &bidder, 100_000, 1));
+
+        assert!(FrontRunningDetector::detect_increment_gaming(
+            &bid(&env, &bidder, 101_000, 2),
+            &recent,
+            1_000,
+        ));
+        assert!(!FrontRunningDetector::detect_increment_gaming(
+            &bid(&env, &bidder, 101_000, 2),
+            &recent,
+            10_000,
+        ));
+        assert!(FrontRunningDetector::detect_increment_gaming(
+            &bid(&env, &bidder, 110_000, 2),
+            &recent,
+            10_000,
+        ));
     }
 }
