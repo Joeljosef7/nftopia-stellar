@@ -28,6 +28,22 @@ export const typography = {
   mono: { fontSize: 14, fontFamily: 'monospace' as const },
 };
 
+/**
+ * Tokens specific to list empty/error states (#472) — EmptyState and
+ * ErrorState (components/ui/) are the only consumers. Centralized here
+ * rather than left as magic numbers in each component, so every list
+ * screen's empty/error UI stays visually consistent by construction.
+ */
+export const listState = {
+  iconSize: 64,
+  title: typography.h3,
+  subtitle: typography.bodySmall,
+  containerPadding: spacing.xl,
+  titleSpacing: spacing.xs,
+  subtitleSpacing: spacing.lg,
+  actionSpacing: spacing.md,
+};
+
 export const shadows = {
   sm: {
     shadowOffset: { width: 0, height: 1 },

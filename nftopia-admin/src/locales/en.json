@@ -41,5 +41,35 @@
       "status": "Status",
       "date": "Date"
     }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "help": "Admin accounts only. Use your NFTopia email and password.",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…"
+    },
+    "twoFactor": {
+      "title": "Two-factor verification",
+      "help": "Enter the 6-digit code from your authenticator app.",
+      "code": "Authentication code",
+      "submit": "Verify",
+      "cancel": "Back to sign in"
+    },
+    "logout": "Log out",
+    "signedInAs": "Signed in as {{name}}",
+    "notice": {
+      "session_expired": "Your session has expired. Please sign in again.",
+      "logged_out": "You have been logged out."
+    },
+    "error": {
+      "invalid_credentials": "Invalid email or password.",
+      "invalid_code": "Invalid or expired verification code.",
+      "not_admin": "This account does not have admin access. Only NFTopia administrators can sign in here.",
+      "network": "Unable to reach the NFTopia server. Check your connection and try again.",
+      "unknown": "Sign-in failed. Please try again."
+    }
   }
 }

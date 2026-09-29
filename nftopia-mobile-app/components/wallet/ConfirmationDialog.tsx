@@ -12,6 +12,20 @@ interface ConfirmationDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   destructive?: boolean;
+  /**
+   * Extra content rendered between the message and the buttons (#471) —
+   * e.g. TransactionFeeSummary for a transaction-signing confirmation.
+   * Optional and unused by this dialog's other callers (wallet removal,
+   * etc.), so it doesn't affect them.
+   */
+  children?: React.ReactNode;
+  /**
+   * Disables and dims the confirm button without hiding it — used to
+   * block submission (e.g. a minimum-reserve breach) while still letting
+   * the user see *why* via `children`, rather than silently removing
+   * their only way to act on the dialog.
+   */
+  confirmDisabled?: boolean;
 }
 
 export default function ConfirmationDialog({
@@ -23,6 +37,8 @@ export default function ConfirmationDialog({
   onConfirm,
   onCancel,
   destructive = false,
+  children,
+  confirmDisabled = false,
 }: ConfirmationDialogProps) {
   const confirmScale = useRef(new Animated.Value(1)).current;
   const cancelScale = useRef(new Animated.Value(1)).current;
@@ -46,6 +62,7 @@ export default function ConfirmationDialog({
   };
 
   const handleConfirm = () => {
+    if (confirmDisabled) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onConfirm();
   };
@@ -61,6 +78,7 @@ export default function ConfirmationDialog({
         <View style={styles.dialog}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
+          {children}
           <View style={styles.buttons}>
             <TouchableOpacity
               style={styles.cancelButton}
@@ -74,11 +92,19 @@ export default function ConfirmationDialog({
               </Animated.View>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmButton, destructive && styles.confirmDestructive]}
+              style={[
+                styles.confirmButton,
+                destructive && styles.confirmDestructive,
+                confirmDisabled && styles.confirmButtonDisabled,
+              ]}
               onPress={handleConfirm}
               onPressIn={() => handlePressIn(confirmScale)}
               onPressOut={() => handlePressOut(confirmScale)}
               activeOpacity={1}
+              disabled={confirmDisabled}
+              accessibilityRole="button"
+              accessibilityLabel={confirmLabel}
+              accessibilityState={{ disabled: confirmDisabled }}
             >
               <Animated.View style={{ transform: [{ scale: confirmScale }] }}>
                 <Text
@@ -149,6 +175,10 @@ const styles = StyleSheet.create({
   },
   confirmDestructive: {
     backgroundColor: colors.error,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: colors.border,
+    opacity: 0.7,
   },
   confirmText: {
     fontSize: 15,

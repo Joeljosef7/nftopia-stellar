@@ -294,9 +294,9 @@ function HomeContent() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionCard}
+            onPress={() => navigation.navigate('Receive')}
             accessibilityRole="button"
             accessibilityLabel={t('home.actions.receive')}
-            accessibilityHint="Coming soon"
           >
             <Text style={styles.actionIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">📥</Text>
             <Text style={styles.actionLabel}>{t('home.actions.receive')}</Text>

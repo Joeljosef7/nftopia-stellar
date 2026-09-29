@@ -16,7 +16,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import * as crypto from 'crypto';
 import { promisify } from 'util';
-import { IsNull, MoreThan, Repository } from 'typeorm';
+import { DataSource, IsNull, MoreThan, Repository } from 'typeorm';
 import { EmailLoginDto, EmailRegisterDto } from './dto/email-auth.dto';
 import {
   WalletChallengeDto,
@@ -33,7 +33,9 @@ import {
   ResetPasswordDto,
 } from './dto/password-reset.dto';
 import { WalletSession } from './entities/wallet-session.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { UserWallet } from './entities/user-wallet.entity';
+import { RefreshTokenFamily } from './entities/refresh-token-family.entity';
 import { User } from '../users/user.entity';
 import { StellarSignatureStrategy } from './strategies/stellar.strategy';
 import { TwoFactorService } from './two-factor.service';
@@ -44,12 +46,15 @@ type JwtUserPayload = {
   username?: string;
   email?: string;
   walletAddress?: string;
+  role?: string;
   twoFactorVerified?: boolean;
 };
 
 type JwtRefreshPayload = {
   sub: string;
   type: string;
+  jti: string;
+  familyId: string;
 };
 
 type AuthResponse = {
@@ -64,6 +69,7 @@ type AuthResponse = {
     walletProvider?: string | null;
     avatarUrl?: string | null;
     bannerUrl?: string | null;
+    role?: string | null;
   };
 };
 
@@ -114,6 +120,11 @@ export class AuthService {
     private readonly userWalletRepository: Repository<UserWallet>,
     @InjectRepository(WalletSession)
     private readonly walletSessionRepository: Repository<WalletSession>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(RefreshTokenFamily)
+    private readonly refreshTokenFamilyRepository: Repository<RefreshTokenFamily>,
+    private readonly dataSource: DataSource,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     @Inject(forwardRef(() => TwoFactorService))
     private readonly twoFactorService: TwoFactorService,
@@ -145,7 +156,7 @@ export class AuthService {
 
     await this.issueEmailVerificationToken(user);
 
-    return this.buildAuthResponse(user);
+    return await this.buildAuthResponse(user);
   }
 
   /**
@@ -267,7 +278,7 @@ export class AuthService {
     user.lastLoginAt = new Date();
     await this.userRepository.save(user);
 
-    return this.buildAuthResponse(user);
+    return await this.buildAuthResponse(user);
   }
 
   async generateWalletChallenge(
@@ -394,7 +405,7 @@ export class AuthService {
       };
     }
 
-    return this.buildAuthResponse(user);
+    return await this.buildAuthResponse(user);
   }
 
   async linkWallet(userId: string, dto: WalletLinkDto) {
@@ -560,25 +571,35 @@ export class AuthService {
     return null;
   }
 
-  login(user: JwtUserPayload) {
-    return this.buildTokenPair(user);
+  async login(user: JwtUserPayload) {
+    const family = await this.createRefreshTokenFamily(user.sub);
+    return this.issueTokenPair(user, family.id, this.refreshTokenRepository);
   }
 
   /**
-   * Build auth response with 2FA claim in JWT
+   * Build auth response with a new refresh-token family.
+   *
+   * Each successful authentication event starts a new family. Refreshes
+   * rotate tokens inside that family until the family is revoked.
    */
-  buildAuthResponse(user: User): AuthResponse {
+  async buildAuthResponse(user: User): Promise<AuthResponse> {
     const resolvedWalletAddress =
       user.walletAddress ?? user.address ?? undefined;
     const resolvedEmail = user.email ?? undefined;
+    const family = await this.createRefreshTokenFamily(user.id);
 
-    const tokenPair = this.buildTokenPair({
-      sub: user.id,
-      username: user.username,
-      email: resolvedEmail,
-      walletAddress: resolvedWalletAddress,
-      twoFactorVerified: true, // User has passed 2FA check
-    });
+    const tokenPair = await this.issueTokenPair(
+      {
+        sub: user.id,
+        username: user.username,
+        email: resolvedEmail,
+        walletAddress: resolvedWalletAddress,
+        role: user.role,
+        twoFactorVerified: true,
+      },
+      family.id,
+      this.refreshTokenRepository,
+    );
 
     return {
       ...tokenPair,
@@ -591,26 +612,168 @@ export class AuthService {
         walletProvider: user.walletProvider,
         avatarUrl: user.avatarUrl ?? null,
         bannerUrl: user.bannerUrl ?? null,
+        role: user.role ?? null,
       },
     };
   }
 
+  /**
+   * Rotate a refresh token exactly once.
+   *
+   * The refresh-token row is locked for the duration of the transaction so
+   * concurrent requests cannot both consume the same token. Reuse of an
+   * already-consumed token revokes its entire family.
+   */
   async refreshTokens(refreshToken: string) {
+    let payload: JwtRefreshPayload;
+
     try {
-      const payload = this.jwtService.verify<JwtRefreshPayload>(refreshToken);
-      if (payload.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid token type');
-      }
-      const user = await this.userRepository.findOne({
-        where: { id: payload.sub },
-      });
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-      return this.buildAuthResponse(user);
+      payload = this.jwtService.verify<JwtRefreshPayload>(refreshToken);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+
+    if (
+      payload.type !== 'refresh' ||
+      !payload.jti ||
+      !payload.familyId ||
+      !payload.sub
+    ) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const tokenRepository = manager.getRepository(RefreshToken);
+      const familyRepository = manager.getRepository(RefreshTokenFamily);
+
+      const token = await tokenRepository.findOne({
+        where: {
+          jti: payload.jti,
+          userId: payload.sub,
+          familyId: payload.familyId,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!token) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const family = await familyRepository.findOne({
+        where: { id: token.familyId, userId: payload.sub },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!family || family.revokedAt) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      if (token.expiresAt <= new Date()) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      if (token.usedAt || token.revokedAt) {
+        family.revokedAt = new Date();
+        await familyRepository.save(family);
+        return { reuseDetected: true as const };
+      }
+
+      const presentedHash = this.hashToken(refreshToken);
+      const storedHash = Buffer.from(token.tokenHash, 'hex');
+      const incomingHash = Buffer.from(presentedHash, 'hex');
+
+      if (
+        storedHash.length !== incomingHash.length ||
+        !crypto.timingSafeEqual(storedHash, incomingHash)
+      ) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      token.usedAt = new Date();
+      await tokenRepository.save(token);
+
+      return {
+        reuseDetected: false as const,
+        tokenPair: await this.issueTokenPair(
+          {
+            sub: user.id,
+            username: user.username,
+            email: user.email ?? undefined,
+            walletAddress: user.walletAddress ?? user.address ?? undefined,
+            role: user.role,
+            twoFactorVerified: true,
+          },
+          family.id,
+          tokenRepository,
+        ),
+      };
+    });
+
+    if (result.reuseDetected) {
+      throw new UnauthorizedException('Refresh token reuse detected');
+    }
+
+    return result.tokenPair;
+  }
+
+  private async createRefreshTokenFamily(
+    userId: string,
+  ): Promise<RefreshTokenFamily> {
+    const family = this.refreshTokenFamilyRepository.create({
+      id: crypto.randomUUID(),
+      userId,
+    });
+    return this.refreshTokenFamilyRepository.save(family);
+  }
+
+  private async issueTokenPair(
+    user: JwtUserPayload,
+    familyId: string,
+    refreshTokenRepository: Repository<RefreshToken>,
+  ) {
+    const accessToken = this.jwtService.sign({
+      sub: user.sub,
+      username: user.username,
+      email: user.email,
+      walletAddress: user.walletAddress,
+      role: user.role,
+      twoFactorVerified: user.twoFactorVerified || false,
+      type: 'access',
+    });
+
+    const jti = crypto.randomUUID();
+    const refreshToken = this.jwtService.sign(
+      {
+        sub: user.sub,
+        type: 'refresh',
+        jti,
+        familyId,
+      },
+      { expiresIn: this.refreshTokenTtlSeconds },
+    );
+
+    const refreshTokenEntity = refreshTokenRepository.create({
+      id: crypto.randomUUID(),
+      jti,
+      familyId,
+      userId: user.sub,
+      tokenHash: this.hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + this.refreshTokenTtlSeconds * 1000),
+    });
+
+    await refreshTokenRepository.save(refreshTokenEntity);
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
   }
 
   /**
@@ -844,6 +1007,7 @@ export class AuthService {
       username: user.username,
       email: user.email,
       walletAddress: user.walletAddress,
+      role: user.role,
       twoFactorVerified: user.twoFactorVerified || false,
       type: 'access',
     });

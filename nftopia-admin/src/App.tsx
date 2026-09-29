@@ -1,7 +1,14 @@
 import { useTranslation } from 'react-i18next'
+import { useAuth } from './auth/useAuth'
+import LoginPage from './pages/LoginPage'
 
 function App() {
   const { t } = useTranslation()
+  const { state, store } = useAuth()
+
+  if (state.status !== 'authenticated') {
+    return <LoginPage />
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(1200px_circle_at_100%_0%,#123d63_0%,transparent_45%),radial-gradient(900px_circle_at_0%_100%,#1e3a8a_0%,transparent_40%),#020617] p-6 md:p-10">
@@ -18,9 +25,25 @@ function App() {
               {t('onboarding.walletHelp')}
             </p>
           </div>
-          <span className="inline-flex w-fit rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-            {t('network.mainnet.label')}
-          </span>
+          <div className="flex flex-col items-start gap-2 md:items-end">
+            <span className="inline-flex w-fit rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+              {t('network.mainnet.label')}
+            </span>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <span>
+                {t('auth.signedInAs', {
+                  name: state.user.email ?? state.user.username ?? state.user.id,
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() => store.logout()}
+                className="rounded-lg border border-white/10 px-3 py-1 text-slate-200 transition hover:bg-white/10"
+              >
+                {t('auth.logout')}
+              </button>
+            </div>
+          </div>
         </header>
 
         <section className="grid gap-4 md:grid-cols-3">

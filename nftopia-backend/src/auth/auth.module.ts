@@ -11,6 +11,8 @@ import { StellarSignatureGuard } from './stellar-signature.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { UserWallet } from './entities/user-wallet.entity';
 import { WalletSession } from './entities/wallet-session.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
+import { RefreshTokenFamily } from './entities/refresh-token-family.entity';
 import { User } from '../users/user.entity';
 import { TwoFactorModule } from './two-factor.module';
 import { EmailModule } from '../modules/email/email.module';
@@ -31,7 +33,7 @@ import { EmailModule } from '../modules/email/email.module';
         },
       }),
     }),
-    TypeOrmModule.forFeature([User, UserWallet, WalletSession]),
+    TypeOrmModule.forFeature([User, UserWallet, WalletSession, RefreshToken, RefreshTokenFamily]),
     forwardRef(() => TwoFactorModule),
     EmailModule,
   ],
