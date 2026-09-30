@@ -1265,6 +1265,20 @@ impl MarketplaceSettlement {
         Ok(())
     }
 
+    /// Read whether `contract` is allowlisted for NFT settlement (view function).
+    ///
+    /// Used by deployment tooling and off-chain verifiers to confirm that a
+    /// freshly deployed NFT contract has been wired into the marketplace.
+    pub fn is_nft_allowed(env: Env, contract: Address) -> bool {
+        AllowlistStore::is_nft_allowed(&env, &contract)
+    }
+
+    /// Read whether `contract` is allowlisted for token settlement (view
+    /// function). See [`Self::is_nft_allowed`].
+    pub fn is_token_allowed(env: Env, contract: Address) -> bool {
+        AllowlistStore::is_token_allowed(&env, &contract)
+    }
+
     /// Block an address (admin only)
     pub fn block_address(
         env: Env,
