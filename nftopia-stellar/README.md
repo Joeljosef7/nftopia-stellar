@@ -1,4 +1,11 @@
 # NFTopia Soroban Contracts
+
+## Transaction contract boundary
+
+The contract is a lifecycle/audit coordinator, not the executor for backend
+marketplace operations. See the monorepo's
+[`transaction architecture decision`](../docs/transaction-architecture.md)
+for the current responsibility boundary and client guidance.
 **Stellar Smart-Contract Workspace**
 
 ![Rust](https://img.shields.io/badge/Rust-Contracts-b7410e)
