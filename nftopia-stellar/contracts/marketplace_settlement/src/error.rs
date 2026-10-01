@@ -217,6 +217,33 @@ impl From<DisputeError> for SettlementError {
     }
 }
 
+// Separate enum for withdrawal-anomaly-monitoring errors
+//
+// These live outside `SettlementError` because it is at the 50-case spec limit.
+// `WithdrawalPatternMonitor` (security/frontrun_protection.rs) returns these
+// codes directly rather than converting through `SettlementError`, since it is
+// not yet wired into a public entrypoint.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum WithdrawalAnomalyError {
+    /// The supplied `WithdrawalAnomalyConfig` is internally inconsistent (a
+    /// zero threshold, a negative spike floor, or a history_limit shorter
+    /// than max_withdrawals_per_window).
+    InvalidConfig = 1,
+    /// `clear_hold` was called for an account with no outstanding hold.
+    NoHold = 2,
+}
+
+// Helper to convert WithdrawalAnomalyError to SettlementError
+impl From<WithdrawalAnomalyError> for SettlementError {
+    fn from(err: WithdrawalAnomalyError) -> Self {
+        match err {
+            WithdrawalAnomalyError::InvalidConfig => SettlementError::InvalidState,
+            WithdrawalAnomalyError::NoHold => SettlementError::NotFound,
+        }
+    }
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EmergencyWithdrawalReason {
