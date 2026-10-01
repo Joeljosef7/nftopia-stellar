@@ -49,7 +49,8 @@ NFTopia Soroban Contracts is the on-chain workspace for collection creation, mar
 │  transaction_contract    nft_contract                           │
 ├──────────────────────────────────────────────────────────────────┤
 │ Scripts                                                          │
-│  deploy_factory.sh        verify_contract.sh                    │
+│  deploy_all.sh            verify_contract.sh                    │
+│  deploy_factory.sh        verify_deployments.sh                 │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -101,7 +102,20 @@ The workspace root also defines an optimized `release` profile and a `release-wi
 
 ## 🚀 Deploy and Verify
 
-Helper scripts are provided for the collection factory package.
+### Deploy all contracts and wire cross-contract dependencies
+
+```bash
+cd nftopia-stellar
+chmod +x scripts/deploy_all.sh
+NETWORK=testnet SOURCE=secret ./scripts/deploy_all.sh
+```
+
+`deploy_all.sh` builds and deploys all four contracts, then **wires**
+`marketplace_settlement` to the freshly deployed `nft_contract` address (and
+optionally to token / XLM SACs), and **verifies** the wiring by reading the
+configured addresses back from the contract. The full cross-contract dependency
+graph, environment variables, and troubleshooting notes live in
+[`docs/deployment-wiring.md`](docs/deployment-wiring.md).
 
 ### Deploy the collection factory
 
