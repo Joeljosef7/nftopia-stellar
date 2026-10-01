@@ -217,3 +217,16 @@ budgets against a deployed preview instead.
 Thresholds sit slightly below each page's current baseline so ordinary noise does
 not fail unrelated PRs, while a real regression still trips the gate. Every run is
 the median of three passes to avoid one slow run flapping the build.
+
+`lhci autorun` starts the frontend on its own, without the GraphQL API, so the NFT
+detail route (`/en/marketplace/1`) renders its not-found shell there. That shell is
+deliberately `noindex`, and `is-crawlable` alone carries a 4.0 weight in the SEO
+category, so the detail URL is held to every performance/accessibility/Core Web
+Vitals budget but its SEO score is reported as a warning rather than a failure. The
+per-URL split lives in `assertMatrix` in `lighthouserc.js`; the rendered route itself
+is covered by the e2e suite.
+
+Crawler files are real routes: `app/robots.ts` serves `/robots.txt` and
+`app/sitemap.ts` serves `/sitemap.xml`. Before them, `/robots.txt` fell through to
+the `[locale]` dynamic segment and returned the app shell HTML, which is what the
+`robots-txt` audit flags as "robots.txt is not valid".
