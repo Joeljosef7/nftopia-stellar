@@ -204,7 +204,7 @@ budgets against a deployed preview instead.
 | `categories:performance` | >= 0.80 | error | Floor for the heaviest asset pages; below this the marketplace grid feels broken on mid-tier mobile. |
 | `categories:accessibility` | >= 0.90 | error | The marketplace is a WCAG-relevant surface and already ships a11y-oriented components; regressions must block. |
 | `categories:best-practices` | >= 0.90 | warn | Useful signal, but noisy for a Stellar dapp (wallet extensions, third-party scripts). |
-| `categories:seo` | >= 0.90 | error | Locale-aware metadata is a product requirement; a broken `generateMetadata` should fail CI. |
+| `categories:seo` | >= 0.90 | error on `/` + `/en/marketplace`, warn on NFT detail | Locale-aware metadata is a product requirement; a broken `generateMetadata` should fail CI. The detail route renders API data, which is unavailable during `lhci autorun`, so its crawlability is advisory (see below). |
 | `largest-contentful-paint` | <= 2500 ms | error | Core Web Vitals good boundary (75th percentile). |
 | `cumulative-layout-shift` | <= 0.1 | error | Core Web Vitals good boundary; the grid/marketplace cards are the usual culprit. |
 | `total-blocking-time` | <= 200 ms | error | Lab proxy for INP, which has no lab metric of its own. |
