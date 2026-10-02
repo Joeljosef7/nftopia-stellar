@@ -16,9 +16,10 @@ const baseUrl = process.env.LHCI_BASE_URL || "http://localhost:5000";
 /**
  * Budgets shared by every audited URL.
  *
- * `assertMatrix` does not merge entries — the first pattern that matches a
- * result wins and supplies the *whole* assertion set for it — so each entry in
- * the matrix spreads this object rather than inheriting it.
+ * `assertMatrix` does not merge entries — a matching entry supplies the
+ * *whole* assertion set for a result — and every entry whose pattern matches is
+ * applied, so each entry spreads this object and the patterns below are written
+ * to be mutually exclusive.
  */
 const sharedBudgets = {
   // ── Category budgets ────────────────────────────────────────────────
@@ -82,8 +83,11 @@ module.exports = {
         },
         {
           // Landing and marketplace browse: fully renderable without a backend,
-          // so every budget is a hard gate.
-          matchingUrlPattern: ".*",
+          // so every budget is a hard gate. The negative lookahead keeps the NFT
+          // detail URL (handled by the advisory entry above) out of this one --
+          // LHCI applies *every* matching entry, so overlapping patterns would
+          // re-impose the hard SEO gate that the entry above relaxes.
+          matchingUrlPattern: "^(?!.*/marketplace/\\d+$).*",
           assertions: {
             ...sharedBudgets,
           },
